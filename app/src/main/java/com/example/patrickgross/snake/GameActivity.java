@@ -2,11 +2,18 @@ package com.example.patrickgross.snake;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Point;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.view.Display;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -15,7 +22,7 @@ import java.util.Random;
 
 public class GameActivity extends Activity {
 
-    Canvas canvs;
+    Canvas canvas;
     SnakeView snakeView;
 
     Bitmap headBitmap;
@@ -55,8 +62,67 @@ public class GameActivity extends Activity {
     }
 
     public void configureDisplay(){
+        Display display = getWindowManager().getDefaultDisplay();
+        Point size = new Point();
+        display.getSize(size);
+        screenWidth = size.x;
+        screenHeight = size.y;
+
+        topGap = screenHeight / 14;
+        blockSize = screenWidth/40;
+        numBlocksWide = 40;
+        numBlocksHigh = (screenHeight - topGap)/blockSize;
+
+        headBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.head);
+        tailBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.tail);
+        bodyBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.body);
+        appleBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.apple);
+
+        headBitmap = Bitmap.createScaledBitmap(headBitmap, blockSize, blockSize, false);
+        tailBitmap = Bitmap.createScaledBitmap(tailBitmap, blockSize, blockSize, false);
+        bodyBitmap = Bitmap.createScaledBitmap(bodyBitmap, blockSize, blockSize, false);
+        appleBitmap = Bitmap.createScaledBitmap(appleBitmap, blockSize, blockSize, false);
+
+
 
     }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        while (true) {
+            snakeView.pause();
+            break;
+        }
+        finish();
+    }
+
+
+    @Override
+    protected void onResume(){
+        super.onResume();
+        snakeView.resume();
+    }
+
+    @Override
+    protected void onPause(){
+        super.onPause();
+        snakeView.pause();
+    }
+
+    public boolean onKeyDown(int keyCode, KeyEvent event){
+        if(keyCode == KeyEvent.KEYCODE_BACK) {
+            snakeView.pause();
+
+            Intent i = new Intent(this, MainActivity.class);
+            startActivity(i);
+            finish();
+            return true;
+        }
+        return false;
+    }
+
+
 
     class SnakeView extends SurfaceView implements Runnable{
 
@@ -94,22 +160,88 @@ public class GameActivity extends Activity {
         }
 
         @Override
-        public void run() {
-            while(playingSnake){
+        public void run(){
+            while(playingSnake) {
                 updateGame();
                 drawGame();
                 controlFPS();
             }
         }
-        public void drawGame(){
 
+
+        public void pause() {
+            playingSnake = false;
+            try {
+                ourThread.join();
+            } catch (InterruptedException e){}
+        }
+
+        public void resume() {
+            playingSnake = true;
+            ourThread = new Thread(this);
+            ourThread.start();
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent motionEvent) {
+            switch(motionEvent.getAction() & MotionEvent.ACTION_MASK){
+                case MotionEvent.ACTION_UP :
+                    if(motionEvent.getX() >= screenWidth / 2){
+                        directionOfTravel++;
+                        if(directionOfTravel == 4){
+                            directionOfTravel = 0;
+                        }
+                    } else {
+                        directionOfTravel--;
+                        if (directionOfTravel == -1){
+                            directionOfTravel = 3;
+                        }
+                    }
+            }
+            return true;
+        }
+
+        public void controlFPS() {
+            long timeThisFrame = (System.currentTimeMillis() - lastFrameTime);
+            long timeToSleep = 100 - timeThisFrame;
+            if (timeThisFrame > 0) {
+                fps = (int)(1000/timeThisFrame);
+            }
+            if (timeToSleep > 0){
+                try {
+                    ourThread.sleep(timeToSleep);
+                } catch (InterruptedException e) {}
+            }
+            lastFrameTime = System.currentTimeMillis();
+            }
+
+        public void drawGame(){
+            if (ourHolder.getSurface().isValid()){
+                canvas = ourHolder.lockCanvas();
+                canvas.drawColor(Color.BLACK);
+                paint.setColor(Color.argb(255, 255, 255, 255));
+                paint.setTextSize(topGap/2);
+                canvas.drawText("Score = " + score + "Hi: " + hi, 10, topGap - 6, paint);
+                paint.setStrokeWidth(3);
+                canvas.drawLine(1, topGap, screenWidth - 1, topGap, paint );
+                canvas.drawLine(screenWidth - 1, topGap, screenWidth - 1, topGap + (numBlocksHigh*blockSize), paint);
+                canvas.drawLine(screenWidth - 1, topGap + (numBlocksHigh*blockSize), 1, topGap + (numBlocksHigh*blockSize), paint);
+                canvas.drawLine(1, topGap, 1, topGap + (numBlocksHigh*blockSize), paint);
+                canvas.drawBitmap(headBitmap, snakeX[0]*blockSize, (snakeY[0]*blockSize) + topGap, paint);
+                for (int i = 1; i < snakeLength - 1; i++){
+                    canvas.drawBitmap(bodyBitmap, snakeX[i]*blockSize, (snakeY[i]*blockSize) + topGap, paint);
+                }
+                canvas.drawBitmap(tailBitmap, snakeX[snakeLength - 1]*blockSize, (snakeY[snakeLength - 1]*blockSize) + topGap, paint);
+                canvas.drawBitmap(appleBitmap, appleX * blockSize, (appleY*blockSize) + topGap, paint);
+                ourHolder.unlockCanvasAndPost(canvas);
+            }
         }
 
         public void updateGame(){
             if(snakeX[0] == appleX && snakeY[0] == appleY){
                 snakeLength ++;
                 getApple();
-                score = score = snakeLength;
+                score += snakeLength;
             }
 
             for (int i = snakeLength; i > 0; i--){
